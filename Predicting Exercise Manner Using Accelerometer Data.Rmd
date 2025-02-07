@@ -1,0 +1,105 @@
+---
+title: "Predicting Exercise Manner Using Accelerometer Data"
+author: "Somayeh Mehrparvar"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+## Introduction
+This report analyzes data collected from accelerometers on different body parts to predict the manner in which participants performed exercises. The goal is to build a machine learning model to classify the exercise manner (`classe` variable) using sensor readings.
+
+## Load and Explore Data
+In this section, we load the training and test datasets, check their structure, and inspect missing values. Understanding the dataset helps in deciding the preprocessing steps.
+
+```{r load-data}
+library(tidyverse)
+library(caret)
+library(randomForest)
+
+# Load data
+train_url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+test_url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+train_data <- read.csv(train_url, na.strings = c("NA", "", "#DIV/0!"))
+test_data <- read.csv(test_url, na.strings = c("NA", "", "#DIV/0!"))
+
+# View data structure
+str(train_data)
+```
+
+## Data Preprocessing
+Data cleaning is a crucial step before training the model. Here, we remove columns with too many missing values, low variance predictors, and non-informative variables such as timestamps.
+
+```{r preprocess}
+# Remove near-zero variance predictors (if any)
+nzv <- nearZeroVar(train_data)
+if (length(nzv) > 0) {
+  train_data <- train_data[, -nzv]
+}
+
+# Remove columns with too many NAs
+threshold <- 0.6 # Set threshold for missing values
+missing_fraction <- colSums(is.na(train_data)) / nrow(train_data)
+too_many_NAs <- which(missing_fraction > threshold)
+
+if (length(too_many_NAs) > 0) {
+  train_data <- train_data[, -too_many_NAs]
+}
+
+# Ensure non-predictive columns exist before removal
+non_predictive <- c("X", "user_name", "raw_timestamp_part_1", "raw_timestamp_part_2", "cvtd_timestamp")
+existing_cols <- intersect(non_predictive, colnames(train_data))
+
+if (length(existing_cols) > 0) {
+  train_data <- train_data %>% dplyr::select(-all_of(existing_cols))
+}
+
+# Convert `classe` to factor (only if it exists)
+if ("classe" %in% colnames(train_data)) {
+  train_data$classe <- as.factor(train_data$classe)
+} else {
+  stop("Error: The 'classe' variable is missing after preprocessing.")
+}
+
+```
+
+## Split Data for Training and Validation
+To evaluate the model’s performance, we split the dataset into training and validation sets. The training set is used to build the model, while the validation set is used to assess its accuracy before final testing.
+
+```{r split-data}
+set.seed(123)
+train_index <- createDataPartition(train_data$classe, p = 0.7, list = FALSE)
+training_set <- train_data[train_index, ]
+validation_set <- train_data[-train_index, ]
+```
+
+## Model Training
+We train a Random Forest classifier to predict the `classe` variable. Random Forest is a powerful ensemble learning technique that reduces overfitting and provides reliable classification.
+
+```{r train-model}
+set.seed(123)
+model_rf <- randomForest(classe ~ ., data = training_set, ntree = 100, importance = TRUE)
+```
+
+## Model Evaluation
+After training, we use the validation set to evaluate the model’s performance by computing accuracy and confusion matrix.
+
+```{r evaluate-model}
+predictions <- predict(model_rf, validation_set)
+confusionMatrix(predictions, validation_set$classe)
+```
+
+## Predict on Test Data
+Finally, we use the trained model to predict outcomes on the test dataset, which contains 20 different cases.
+
+```{r predict-test}
+test_predictions <- predict(model_rf, test_data)
+print(test_predictions)
+```
+
+## Conclusion
+This project demonstrates how accelerometer data can be used to classify exercise manner using a machine learning model. The Random Forest model provides high accuracy, making it a suitable choice for this problem. Future improvements could involve trying other models such as Gradient Boosting or Neural Networks and further feature engineering to enhance predictive performance.
